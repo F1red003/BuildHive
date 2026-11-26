@@ -1,0 +1,18 @@
+server:
+  port: ${PORT:8082}
+
+buildhive:
+  worker:
+    name: ${BUILDHIVE_WORKER_NAME:worker-1}
+    server-base-url: ${BUILDHIVE_WORKER_SERVER_URL:http://localhost:8080}
+    workspaces-root: ${BUILDHIVE_WORKER_WORKSPACES_ROOT:./buildhive-data/workspaces}
+    logs-root: ${BUILDHIVE_WORKER_LOGS_ROOT:./buildhive-data/logs}
+    lease-seconds: ${BUILDHIVE_WORKER_LEASE_SECONDS:300}
+    heartbeat-interval-ms: ${BUILDHIVE_WORKER_HEARTBEAT_INTERVAL_MS:10000}
+    min-poll-interval-ms: ${BUILDHIVE_WORKER_MIN_POLL_INTERVAL_MS:1000}
+    max-poll-interval-ms: ${BUILDHIVE_WORKER_MAX_POLL_INTERVAL_MS:5000}
+    polling-enabled: ${BUILDHIVE_WORKER_POLLING_ENABLED:true}
+
+logging:
+  level:
+    com.buildhive.worker: INFO

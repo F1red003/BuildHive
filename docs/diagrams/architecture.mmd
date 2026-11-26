@@ -1,0 +1,10 @@
+flowchart TB
+  Dev["Developer"] -->|Upload ZIP, view status and logs| UI["React dashboard / Nginx"]
+  subgraph Stack["Local Docker Compose services"]
+    UI -->|Proxy API and log stream| API["Spring Boot server"]
+    W["Two workers / Maven execution"] -->|Authenticated claims and results| API
+    API -->|Store and query scheduler state| DB[("PostgreSQL")]
+    API -->|Store uploads and read outputs| FS[("Shared workspace volume")]
+    API -->|Publish verified copies and serve downloads| ART[("Server-only artifact volume")]
+    W -->|Read ZIPs and write build files| FS
+  end

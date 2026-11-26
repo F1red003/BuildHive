@@ -1,0 +1,98 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: buildhive-postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: buildhive
+      POSTGRES_USER: buildhive
+      POSTGRES_PASSWORD: buildhive
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U buildhive -d buildhive"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - pgdata:/var/lib/postgresql
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: buildhive-server
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      BUILDHIVE_SECURITY_WORKER_CREDENTIALS: '{"worker-1":"${BUILDHIVE_WORKER_1_KEY:?Run python scripts/configure_workers.py}","worker-2":"${BUILDHIVE_WORKER_2_KEY:?Run python scripts/configure_workers.py}"}'
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/buildhive
+      SPRING_DATASOURCE_USERNAME: buildhive
+      SPRING_DATASOURCE_PASSWORD: buildhive
+      BUILDHIVE_STORAGE_ROOT: /var/lib/buildhive/storage
+      BUILDHIVE_STORAGE_BASE_PATH: /var/lib/buildhive/storage
+    volumes:
+      - buildhive_storage:/var/lib/buildhive/storage
+      - buildhive_artifacts:/var/lib/buildhive/storage/artifacts
+
+  worker-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: buildhive-worker-1
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      BUILDHIVE_WORKER_API_KEY: ${BUILDHIVE_WORKER_1_KEY:?Run python scripts/configure_workers.py}
+      BUILDHIVE_WORKER_NAME: worker-1
+      BUILDHIVE_WORKER_SERVER_URL: http://server:8080
+      BUILDHIVE_WORKER_WORKSPACES_ROOT: /var/lib/buildhive/storage/workspaces
+      BUILDHIVE_WORKER_LOGS_ROOT: /var/lib/buildhive/storage/logs
+      BUILDHIVE_STORAGE_ROOT: /var/lib/buildhive/storage
+      BUILDHIVE_WORKER_STORAGE_BASE_PATH: /var/lib/buildhive/storage
+      BUILDHIVE_WORKER_POLL_INTERVAL_MS: 1000
+      BUILDHIVE_WORKER_HEARTBEAT_INTERVAL_MS: 3000
+    volumes:
+      - buildhive_storage:/var/lib/buildhive/storage
+
+  worker-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: buildhive-worker-2
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      BUILDHIVE_WORKER_API_KEY: ${BUILDHIVE_WORKER_2_KEY:?Run python scripts/configure_workers.py}
+      BUILDHIVE_WORKER_NAME: worker-2
+      BUILDHIVE_WORKER_SERVER_URL: http://server:8080
+      BUILDHIVE_WORKER_WORKSPACES_ROOT: /var/lib/buildhive/storage/workspaces
+      BUILDHIVE_WORKER_LOGS_ROOT: /var/lib/buildhive/storage/logs
+      BUILDHIVE_STORAGE_ROOT: /var/lib/buildhive/storage
+      BUILDHIVE_WORKER_STORAGE_BASE_PATH: /var/lib/buildhive/storage
+      BUILDHIVE_WORKER_POLL_INTERVAL_MS: 1000
+      BUILDHIVE_WORKER_HEARTBEAT_INTERVAL_MS: 3000
+    volumes:
+      - buildhive_storage:/var/lib/buildhive/storage
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: buildhive-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:80"
+    depends_on:
+      - server
+
+volumes:
+  buildhive_artifacts:
+  pgdata:
+  buildhive_storage:

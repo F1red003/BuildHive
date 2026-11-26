@@ -1,0 +1,10 @@
+.env
+.env.*
+.git
+**/target
+**/node_modules
+**/*.log
+buildhive-data
+/output
+/tmp
+**/__pycache__

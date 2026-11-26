@@ -1,0 +1,29 @@
+# Stage 1: Build Server JAR
+FROM maven:3.9-eclipse-temurin-21 AS builder
+WORKDIR /app
+
+# Copy root pom and module poms for layer caching
+COPY pom.xml .
+COPY buildhive-common/pom.xml ./buildhive-common/
+COPY buildhive-server/pom.xml ./buildhive-server/
+COPY buildhive-worker/pom.xml ./buildhive-worker/
+
+# Copy sources
+COPY buildhive-common/src ./buildhive-common/src
+COPY buildhive-server/src ./buildhive-server/src
+
+# Build server application
+RUN mvn clean package -pl buildhive-server -am -DskipTests
+
+# Stage 2: Production runtime image
+FROM eclipse-temurin:25-jdk-alpine
+WORKDIR /app
+
+# Mount point for shared workspace/artifact storage
+RUN mkdir -p /var/lib/buildhive/storage
+
+COPY --from=builder /app/buildhive-server/target/buildhive-server-1.0.0-SNAPSHOT.jar app.jar
+
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-jar", "app.jar"]

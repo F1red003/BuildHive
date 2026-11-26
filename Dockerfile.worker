@@ -1,0 +1,29 @@
+# Stage 1: Build Worker JAR
+FROM maven:3.9-eclipse-temurin-21 AS builder
+WORKDIR /app
+
+COPY pom.xml .
+COPY buildhive-common/pom.xml ./buildhive-common/
+COPY buildhive-server/pom.xml ./buildhive-server/
+COPY buildhive-worker/pom.xml ./buildhive-worker/
+
+COPY buildhive-common/src ./buildhive-common/src
+COPY buildhive-worker/src ./buildhive-worker/src
+
+RUN mvn clean package -pl buildhive-worker -am -DskipTests
+
+# Stage 2: Runtime image with JDK 25 and Apache Maven 3.9
+FROM eclipse-temurin:25-jdk
+WORKDIR /app
+
+# Copy Apache Maven 3.9 into the worker container
+COPY --from=maven:3.9-eclipse-temurin-21 /usr/share/maven /usr/share/maven
+ENV MAVEN_HOME=/usr/share/maven
+ENV PATH=$MAVEN_HOME/bin:$PATH
+
+# Create workspace and shared storage directories
+RUN mkdir -p /var/lib/buildhive/storage /app/workspaces
+
+COPY --from=builder /app/buildhive-worker/target/buildhive-worker-1.0.0-SNAPSHOT.jar app.jar
+
+ENTRYPOINT ["java", "-jar", "app.jar"]

@@ -1,0 +1,143 @@
+name: BuildHive CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  # =========================================================================
+  # Job 1: Java Backend Compilation, Unit Tests & Concurrency Integration Tests
+  # =========================================================================
+  backend-build-test:
+    name: Backend Build & Tests (Java 25)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Run tests and Java quality checks, then verify the packages
+        run: mvn clean verify -B
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: '**/target/surefire-reports/*'
+          if-no-files-found: ignore
+
+      - name: Upload Checkstyle Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkstyle-reports
+          path: '**/target/checkstyle-result.xml'
+          if-no-files-found: ignore
+
+  # =========================================================================
+  # Job 2: Frontend Linting, TypeScript Type Checking & Production Build
+  # =========================================================================
+  frontend-build:
+    name: Frontend Lint, Typecheck & Build (Node 24)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: buildhive-frontend/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: buildhive-frontend
+        run: npm ci
+
+      - name: Run frontend lint
+        working-directory: buildhive-frontend
+        run: npm run lint -- --deny-warnings
+
+      - name: Build Single-Page Application
+        working-directory: buildhive-frontend
+        run: npm run build
+
+      - name: Upload Frontend Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: buildhive-frontend/dist
+
+  # =========================================================================
+  # Job 3: Multi-Worker Docker Compose E2E Integration Test
+  # =========================================================================
+  e2e-docker-compose-test:
+    name: Multi-Worker Docker Compose E2E Test
+    needs: [backend-build-test, frontend-build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Package Sample Test Projects
+        run: python3 sample-projects/generate_samples.py
+
+      - name: Start BuildHive Multi-Worker Cluster
+        run: |
+          python3 scripts/configure_workers.py
+          docker compose up --build -d
+          echo "Waiting for services to become healthy and available..."
+
+      - name: Wait for BuildHive Server and Workers
+        run: |
+          timeout 90 bash -c '
+            until curl -sf http://localhost:8080/api/pipelines/metrics > /dev/null; do
+              echo "Waiting for BuildHive Server to answer on :8080..."
+              sleep 3
+            done
+          '
+          echo "BuildHive server is ready."
+
+          timeout 60 bash -c '
+            until [ $(curl -fsS http://localhost:8080/api/workers | jq "[.[] | select(.status == \"ACTIVE\") | .workerId] | unique | length") -ge 2 ]; do
+              echo "Waiting for 2 worker daemons to register..."
+              sleep 3
+            done
+          '
+          echo "Workers registered successfully."
+
+      - name: Verify build outcomes and rejected uploads
+        run: >-
+          python3 scripts/verify_samples.py calculator-pass wrapped-project no-tests
+          compile-error test-assertion-failure test-runtime-error quality-rule-violation
+          quality-default-pass quality-default-violation quality-spotbugs-only quality-invalid-rules
+          package-error package-no-jar unresolved-dependency empty-archive not-a-zip
+          missing-pom pom-too-deep malformed-pom wrong-pom-root
+          missing-artifact-id missing-group-id missing-version
+
+      - name: Verify live log streaming and reconnection through the frontend
+        run: python3 scripts/verify_live_logs.py sample-projects/dist/slow-tests.zip
+
+      - name: Dump Container Logs on Failure
+        if: always()
+        run: |
+          docker compose logs --tail=100
+
+      - name: Tear Down Cluster
+        if: always()
+        run: |
+          docker compose down -v
