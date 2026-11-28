@@ -110,10 +110,12 @@ The Java source targets Java 21 and the runtime containers and CI use Java 25. T
 2. **Preserve renewable ownership and cancellation.** Workers now renew bounded attempt leases and stop Maven process trees on rejected ownership, local expiry, interruption, or timeout. Real slow-build and cancellation scenarios verify this behavior.
 3. **Preserve consistent retry semantics.** Expired leases and reported infrastructure errors share bounded backoff and attempt limits. Completion delivery retries preserve the original result, and duplicate acknowledgements cannot rewrite a newer attempt.
 4. **Define how stages share outputs.** Required JAR publication now creates a verified durable copy, and repeated registration returns the same artifact for an attempt. Decide which intermediate build outputs should be passed to later jobs and which may be regenerated.
-5. **Verify hosted CI.** Local checks cover Java and frontend quality, PostgreSQL integration, and Docker Compose scenarios. A passing GitHub Actions run for the current changes still needs to be recorded.
+5. **Measure scheduling overhead.** Compare queue waiting time and Maven execution time under the same workload with one worker and two workers. The recorded overlap establishes that two jobs were active concurrently.
 6. **Keep the trust boundary explicit.** Worker mutations now require a configured credential bound to the worker name; log writes require an active claim. Artifact publication verifies paths, size, and SHA-256 before copying bytes to server-only storage. The current deployment remains for trusted local Maven ZIPs: user accounts, TLS for remote deployment, and isolation of project-controlled Maven code remain separate work.
 
-See [the CI workflow](.github/workflows/ci.yml) for the automated quality checks and Compose scenarios.
+## Hosted verification
+
+GitHub Actions run 45764419400 passed 130 Java tests, validated three PostgreSQL migrations, and passed Java Checkstyle, frontend lint, type checking, and the production build. Its temporary Docker Compose deployment registered two workers, verified 23 submission cases, and checked that a log client could reconnect and recover the complete test log. [Workflow](.github/workflows/ci.yml) · [Passing run](https://github.com/F1red003/BuildHive/actions/runs/45764419400)
 
 
 ## Worker credentials and artifact storage
